@@ -1,0 +1,6 @@
+interface:
+  display_name: "Douyin Author Collector"
+  short_description: "Collect Douyin author homepage slices into Feishu"
+  default_prompt: "Use $douyin-author-homepage-collector to collect Douyin author homepage data into Feishu with an explicit target-selection rule."
+policy:
+  allow_implicit_invocation: true
