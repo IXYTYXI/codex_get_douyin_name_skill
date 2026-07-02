@@ -1,13 +1,9 @@
-# Douyin Author Homepage Scraper
+# Douyin Author Homepage Collector
 
-A standalone Multica skill that scrapes **one Douyin author's homepage** — the
-author's **follower count (粉丝量)** plus a selected slice of their posts
-(skipping pinned videos), including 点赞/评论/收藏 counts, the real image/video
-files, and each post's comments — and writes it all to a **5-table Feishu
-bitable** (作者信息 / 视频作品 / 图文作品 / 一级评论 / 二级评论).
-
-> Single purpose: author-page scraping only. For keyword search, use the
-> separate **douyin-scraper** skill.
+A Codex skill package for collecting Douyin author homepage data into
+Feishu/Lark Base with an explicit target-selection contract. It handles author
+profile stats, pinned/non-pinned/homepage work slices, comments, media
+requirements, shortage reporting, and visible Chrome session rules.
 
 ## Quick start
 
@@ -19,13 +15,26 @@ cp .env.example .env         # fill FEISHU_* + DOUYIN_COOKIE, or: python main.py
 python main.py scrape-author "https://www.douyin.com/user/MS4wLjABAAAA..." --folder <folder>
 ```
 
-## Post selection (skips pinned)
+## Target selection
 
-Drops posts flagged `is_top` and keeps the next 5; if the API omits `is_top`,
-falls back to skipping the first 3 (=> the 4th–8th posts). Tune with
-`--recent-count` / `--skip-top`.
+Do not assume "第4-8条" means one fixed thing. The skill distinguishes:
 
-See [SKILL.md](SKILL.md) for full documentation.
+- `主页原始顺序第4-8条`: all works in homepage order, `works[3:8]`
+- `去掉置顶后第4-8条`: non-pinned works only, `non_pinned[3:8]`
+- `置顶集合第4-8条`: pinned works only, `pinned[3:8]`
+
+If the requested collection is too small, write a shortage report instead of
+substituting another collection.
+
+## Package contents
+
+- [SKILL.md](SKILL.md): Codex skill instructions.
+- [references/collector-miji.md](references/collector-miji.md): handoff
+  "秘籍" with operational rules and failure modes.
+- [scripts/select_author_targets.py](scripts/select_author_targets.py): reusable
+  target-slice helper for homepage/pinned/non-pinned selection.
+- [scripts/build_skill_zip.py](scripts/build_skill_zip.py): creates a clean zip
+  package while excluding cookies, `.env`, runs, Chrome profiles, and `.git`.
 
 ## License
 

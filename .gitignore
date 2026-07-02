@@ -3,5 +3,8 @@ cookies.json
 __pycache__/
 *.pyc
 downloads/
+chrome-cdp-profile/
+runs/
+dist/
 *.csv
 *.json.tmp
