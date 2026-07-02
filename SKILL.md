@@ -47,10 +47,11 @@ python main.py scrape-author "https://www.douyin.com/user/MS4wLjABAAAA..." --fol
 # Keep 8 non-pinned posts; skip 3 pinned on the fallback path
 python main.py scrape-author "<homepage_url>" --folder <folder> --recent-count 8 --skip-top 3
 
-# Only build the 5 empty tables / skip comments / use a headed browser / capture L2 replies
+# Only build the 5 empty tables / skip comments / force headless / capture L2 replies
 python main.py scrape-author "<url>" --folder <folder> --structure-only
 python main.py scrape-author "<url>" --folder <folder> --no-comments
-python main.py scrape-author "<url>" --folder <folder> --ui-comments   # incl. 二级评论 (auto headed)
+python main.py scrape-author "<url>" --folder <folder> --headless      # 默认带界面，加此参数强制无头
+python main.py scrape-author "<url>" --folder <folder> --ui-comments   # incl. 二级评论
 ```
 
 Omit `--folder` to create the bitable in the app's own space. Creating inside a
@@ -91,5 +92,5 @@ signature-blocked, it retries from a browser context, then falls back to the
 - Play count is always 0 from the Web API (Douyin blocks it for third parties).
 - Reply (L2) comments come from the UI-click scraper (`--ui-comments`); the raw
   reply API is `bd-ticket-guard`'d and returns empty to hand-built requests.
-- Headless browsers sometimes crash (`TargetClosedError`); pass `--headed`.
+- Browser defaults to headed (visible) to reduce anti-bot detection risk; pass `--headless` only if needed.
 - Cookies expire after ~60 days — re-run `python main.py login`.

@@ -140,11 +140,11 @@ async def _login(timeout=480):
 @click.option("--skip-top", type=int, default=3,
               help="检测不到置顶标记(is_top)时回退跳过的前 N 条置顶视频（默认 3，即取第4-8条）")
 @click.option("--no-comments", is_flag=True, help="只抓作者信息+作品，跳过一/二级评论")
-@click.option("--headed", is_flag=True, help="用可见的本地浏览器代替无头浏览器（无头总崩溃时用）")
-@click.option("--ui-comments", is_flag=True, help="用模拟点击(真人登录态)抓评论，含二级评论(自动启用 headed)")
+@click.option("--headless", is_flag=True, help="使用无头浏览器（默认带界面，降低被识别封号风险）")
+@click.option("--ui-comments", is_flag=True, help="用模拟点击(真人登录态)抓评论，含二级评论")
 @click.option("--structure-only", is_flag=True, help="只新建 5 张表结构，不抓数据")
 def scrape_author(url, folder, name, recent_count, skip_top,
-                  no_comments, headed, ui_comments, structure_only):
+                  no_comments, headless, ui_comments, structure_only):
     """从作者主页链接抓取：作者信息(粉丝量) + 选定作品(封面/视频/图片/点赞评论收藏) + 评论，写入 5 表多维表格。
 
     默认跳过置顶视频后取最近 5 条（检测到 is_top 则丢弃置顶，否则回退为跳过前 --skip-top 条，
@@ -156,12 +156,12 @@ def scrape_author(url, folder, name, recent_count, skip_top,
         return
     asyncio.run(_scrape_author(
         url, _folder_token(folder), name, recent_count, skip_top,
-        no_comments, headed, ui_comments, structure_only,
+        no_comments, headless, ui_comments, structure_only,
     ))
 
 
 async def _scrape_author(url, folder_token, name, recent_count, skip_top,
-                         no_comments, headed, ui_comments, structure_only):
+                         no_comments, headless, ui_comments, structure_only):
     # 1. Create the 5-table bitable (作者信息 + 视频作品 + 图文作品 + 一级评论 + 二级评论).
     feishu = FeishuBitable()
     try:
@@ -191,8 +191,8 @@ async def _scrape_author(url, folder_token, name, recent_count, skip_top,
         pipeline.AUTHOR_TOP_SKIP = skip_top
         pipeline.KEYWORD = url          # 来源 tag on every record
         pipeline.SKIP_COMMENTS = no_comments
-        if headed or ui_comments:
-            pipeline.HEADLESS = False
+        if headless:
+            pipeline.HEADLESS = True
         if ui_comments:
             pipeline.USE_UI_COMMENTS = True
         await pipeline.main_author()

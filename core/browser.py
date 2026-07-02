@@ -42,7 +42,7 @@ class DouyinBrowser:
         self._context: Optional[BrowserContext] = None
         self._page: Optional[Page] = None
 
-    async def start(self, headless: bool = True):
+    async def start(self, headless: bool = False):
         self._playwright = await async_playwright().start()
         launch_args = {
             "headless": headless,

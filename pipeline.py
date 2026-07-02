@@ -63,12 +63,11 @@ MAX_REPLIES_PER_POST = int(os.environ.get("MAX_REPLIES_PER_POST", "60"))     # L
 # consecutive empty reply fetches so it can never stall the L1 crawl.
 SKIP_L2 = os.environ.get("SKIP_L2", "").lower() in ("1", "true", "yes")
 
-# Launch the Playwright browser headless (default) or headed/visible. A headed
-# local browser is more stable in some runtimes (the headless one crashes with
-# TargetClosedError) and trips Douyin's anti-bot less often, which can recover
-# image-search (Phase 2) and reply (L2) data. Set DOUYIN_HEADLESS=0 or pass
-# --headed to use a visible browser. main.py may override this attribute.
-HEADLESS = os.environ.get("DOUYIN_HEADLESS", "1").lower() not in ("0", "false", "no")
+# Launch the Playwright browser headed/visible (default) to avoid Douyin's
+# anti-bot detection. Headless mode is more likely to trigger captchas and
+# account bans. Set DOUYIN_HEADLESS=1 or pass --headless to force headless.
+# main.py may override this attribute.
+HEADLESS = os.environ.get("DOUYIN_HEADLESS", "0").lower() in ("1", "true", "yes")
 
 # Scrape comments by driving the page UI (simulated clicks on "展开N条回复")
 # instead of the raw reply API. This is how second-level replies are obtained,
