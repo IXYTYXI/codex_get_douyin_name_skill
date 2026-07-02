@@ -12,6 +12,7 @@ FEISHU_TABLE_ID = os.getenv("FEISHU_TABLE_ID", "")
 
 DOUYIN_COOKIE = os.getenv("DOUYIN_COOKIE", "")
 PROXY_URL = os.getenv("PROXY_URL", "")
+CDP_ENDPOINT = os.getenv("CDP_ENDPOINT", "")
 
 MAX_PAGES = int(os.getenv("MAX_PAGES", "10"))
 REQUEST_DELAY = float(os.getenv("REQUEST_DELAY", "2"))

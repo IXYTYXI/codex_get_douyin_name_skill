@@ -5,7 +5,7 @@ import re
 from pathlib import Path
 from typing import Optional
 from playwright.async_api import async_playwright, Browser, BrowserContext, Page
-from config.settings import DOUYIN_BASE_URL, DOUYIN_COOKIE, PROXY_URL
+from config.settings import DOUYIN_BASE_URL, DOUYIN_COOKIE, PROXY_URL, CDP_ENDPOINT
 
 
 COOKIE_FILE = Path(__file__).resolve().parent.parent / "cookies.json"
@@ -41,9 +41,11 @@ class DouyinBrowser:
         self._browser: Optional[Browser] = None
         self._context: Optional[BrowserContext] = None
         self._page: Optional[Page] = None
+        self._cdp_mode = False
 
     async def start(self, headless: bool = False):
         self._playwright = await async_playwright().start()
+        self._cdp_mode = False
         launch_args = {
             "headless": headless,
             "args": [
@@ -78,6 +80,20 @@ class DouyinBrowser:
             await self._set_cookies_from_string(DOUYIN_COOKIE)
 
         self._page = await self._context.new_page()
+
+    async def start_cdp(self, endpoint: str):
+        """Connect to an already-running Chrome via CDP.
+
+        Reuses the logged-in session directly — no cookie export needed.
+        Creates a new tab for scraping work without touching existing tabs.
+        """
+        self._playwright = await async_playwright().start()
+        self._browser = await self._playwright.chromium.connect_over_cdp(endpoint)
+        self._cdp_mode = True
+        contexts = self._browser.contexts
+        self._context = contexts[0] if contexts else await self._browser.new_context()
+        self._page = await self._context.new_page()
+        print(f"[Browser] Connected to Chrome via CDP ({endpoint})")
 
     async def _set_cookies_from_string(self, cookie_str: str):
         cookies = []
@@ -163,7 +179,16 @@ class DouyinBrowser:
     def page(self) -> Page:
         return self._page
 
+    @property
+    def is_cdp(self) -> bool:
+        return self._cdp_mode
+
     async def close(self):
+        if self._cdp_mode and self._page:
+            try:
+                await self._page.close()
+            except Exception:
+                pass
         if self._browser:
             await self._browser.close()
         if self._playwright:

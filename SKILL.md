@@ -40,6 +40,24 @@ i.e. the **4th–8th** posts. Both are tunable (`--recent-count`, `--skip-top`).
 
 ## Run it
 
+### CDP 模式（推荐 — 连接已登录的 Chrome）
+
+不导出 Cookie，直接复用浏览器登录态：
+
+```bash
+# 1. 启动 Chrome 时开启远程调试端口
+chrome --remote-debugging-port=9222
+
+# 2. 在 Chrome 里登录抖音（完成滑块/验证码）
+
+# 3. 用 --cdp 连接该浏览器直接跑
+python main.py scrape-author "https://www.douyin.com/user/MS4wLjABAAAA..." --folder <folder> --cdp http://localhost:9222
+```
+
+也可以在 `.env` 配 `CDP_ENDPOINT=http://localhost:9222`，省略 `--cdp` 参数。
+
+### Cookie 模式（传统方式）
+
 ```bash
 # One shot: create a NEW 5-table bitable AND scrape the author (profile + posts + comments)
 python main.py scrape-author "https://www.douyin.com/user/MS4wLjABAAAA..." --folder <folder_token_or_url>
@@ -72,11 +90,18 @@ cp .env.example .env      # fill FEISHU_* and DOUYIN_COOKIE, or run: python main
 
 | Variable | Required | Notes |
 |---|---|---|
-| `DOUYIN_COOKIE` | yes | login cookie; or run `python main.py login` to capture it |
+| `DOUYIN_COOKIE` | 二选一 | login cookie; or run `python main.py login` to capture it |
+| `CDP_ENDPOINT` | 二选一 | 已登录 Chrome 的 CDP 端点，如 `http://localhost:9222`（推荐，免 Cookie） |
 | `FEISHU_APP_ID` / `FEISHU_APP_SECRET` | yes | self-built Feishu app |
 | `FEISHU_APP_TOKEN` | reuse-only | set when reusing an existing bitable |
 | `AUTHOR_TABLE_ID` / `VIDEO_TABLE_ID` / `IMAGE_TABLE_ID` / `COMMENT_L1_TABLE_ID` / `COMMENT_L2_TABLE_ID` | reuse-only | when reusing an existing bitable |
 | `AUTHOR_RECENT_COUNT` / `AUTHOR_TOP_SKIP` | no | default 5 / 3 |
+
+**认证方式:**
+- **CDP（推荐）**: 启动 Chrome 时加 `--remote-debugging-port=9222`，在 Chrome 里登录抖音，
+  然后用 `--cdp http://localhost:9222` 或在 `.env` 设 `CDP_ENDPOINT`。
+  所有 API 调用直接走浏览器 fetch()，不导出 Cookie，不容易被封。
+- **Cookie**: 传统方式，在 `.env` 设 `DOUYIN_COOKIE` 或 `python main.py login`。
 
 **Security:** never log, print, or paste the cookie into comments. If `.env` is
 missing, configure it on the runtime directly.
