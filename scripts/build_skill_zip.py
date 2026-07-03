@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import fnmatch
 import os
+import re
 import zipfile
 from pathlib import Path
 
@@ -18,6 +19,8 @@ DEFAULT_EXCLUDES = [
     "runs/**",
     "downloads/**",
     "chrome-cdp-profile/**",
+    "tests/**",
+    "tools/**",
     "__pycache__/**",
     "**/__pycache__/**",
     "*.pyc",
@@ -31,10 +34,27 @@ def excluded(rel: str, patterns: list[str]) -> bool:
     return any(fnmatch.fnmatch(rel, pat) for pat in patterns)
 
 
+def read_skill_name(root: Path) -> str:
+    skill_md = root / "SKILL.md"
+    if not skill_md.exists():
+        return root.name
+
+    text = skill_md.read_text(encoding="utf-8")
+    match = re.search(r"^---\s*\n(.*?)\n---\s*", text, flags=re.DOTALL)
+    if not match:
+        return root.name
+
+    for line in match.group(1).splitlines():
+        key, _, value = line.partition(":")
+        if key.strip() == "name" and value.strip():
+            return value.strip().strip("'\"")
+    return root.name
+
+
 def build_zip(root: Path, output: Path, excludes: list[str]) -> int:
     output.parent.mkdir(parents=True, exist_ok=True)
     count = 0
-    prefix = root.name
+    prefix = read_skill_name(root)
     with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED) as zf:
         for path in sorted(root.rglob("*")):
             if not path.is_file():

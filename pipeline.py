@@ -51,6 +51,8 @@ USE_UI_COMMENTS = os.environ.get("USE_UI_COMMENTS", "").lower() in ("1", "true",
 APPEND = os.environ.get("APPEND", "").lower() in ("1", "true", "yes")
 L2_REPLY_TIMEOUT = int(os.environ.get("L2_REPLY_TIMEOUT", "8"))
 L2_DRY_GIVEUP = int(os.environ.get("L2_DRY_GIVEUP", "3"))
+USE_CHROME_PROFILE = os.environ.get("USE_CHROME_PROFILE", "").lower() in ("1", "true", "yes")
+CHROME_PROFILE_DIR = os.environ.get("CHROME_PROFILE_DIR", "")
 
 # CDP endpoint — when set, connect to an already-logged-in Chrome instead of
 # launching a new browser. main.py may override this from --cdp flag.
@@ -671,6 +673,12 @@ async def main_author():
         from core.browser import DouyinBrowser
         browser = DouyinBrowser()
         await browser.start_cdp(cdp)
+        page = browser.page
+    elif USE_CHROME_PROFILE:
+        print('  [Chrome] Launching headed Google Chrome with local profile ...')
+        from core.browser import DouyinBrowser
+        browser = DouyinBrowser()
+        await browser.start_chrome_profile(CHROME_PROFILE_DIR)
         page = browser.page
 
     try:

@@ -95,6 +95,35 @@ class DouyinBrowser:
         self._page = await self._context.new_page()
         print(f"[Browser] Connected to Chrome via CDP ({endpoint})")
 
+    async def start_chrome_profile(self, user_data_dir: str = ""):
+        """Launch visible Google Chrome with an existing local profile.
+
+        This uses Playwright's browser control pipe instead of a CDP port, so it
+        can reuse the user's normal Chrome login state when Chrome refuses to
+        expose the default profile on --remote-debugging-port.
+        """
+        self._playwright = await async_playwright().start()
+        self._cdp_mode = True
+        profile_dir = user_data_dir or os.path.expanduser(
+            "~/Library/Application Support/Google/Chrome"
+        )
+        self._context = await self._playwright.chromium.launch_persistent_context(
+            profile_dir,
+            headless=False,
+            executable_path="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+            args=[
+                "--disable-blink-features=AutomationControlled",
+                "--disable-features=IsolateOrigins,site-per-process",
+            ],
+            viewport={"width": 1440, "height": 900},
+            locale="zh-CN",
+            timezone_id="Asia/Shanghai",
+        )
+        await self._context.add_init_script(STEALTH_JS)
+        self._browser = self._context.browser
+        self._page = self._context.pages[0] if self._context.pages else await self._context.new_page()
+        print(f"[Browser] Launched headed Chrome profile: {profile_dir}")
+
     async def _set_cookies_from_string(self, cookie_str: str):
         cookies = []
         for item in cookie_str.split(";"):
@@ -189,7 +218,9 @@ class DouyinBrowser:
                 await self._page.close()
             except Exception:
                 pass
-        if self._browser:
+        if self._context and self._cdp_mode and not self._browser:
+            await self._context.close()
+        elif self._browser:
             await self._browser.close()
         if self._playwright:
             await self._playwright.stop()

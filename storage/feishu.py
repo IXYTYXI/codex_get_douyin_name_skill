@@ -1,6 +1,10 @@
 import httpx
+import json
 import math
 import os
+import subprocess
+import tempfile
+import time
 import zlib
 from typing import List, Optional
 from config.settings import (
@@ -28,8 +32,11 @@ class FeishuBitable:
         self.table_id = table_id or FEISHU_TABLE_ID
         self._tenant_token: str = ""
         self._client = httpx.Client(timeout=30.0)
+        self._use_lark_cli = not isinstance(self.app_secret, str) or not self.app_secret
 
     def _get_tenant_token(self) -> str:
+        if self._use_lark_cli:
+            raise RuntimeError("tenant token is managed by lark-cli")
         if self._tenant_token:
             return self._tenant_token
         url = f"{FEISHU_API_BASE}/auth/v3/tenant_access_token/internal"
@@ -51,6 +58,57 @@ class FeishuBitable:
             "Content-Type": "application/json; charset=utf-8",
         }
 
+    def _cli_api(self, method: str, path: str, data: dict = None,
+                 params: dict = None, files: dict = None) -> dict:
+        args = [
+            "lark-cli", "api", method, path,
+            "--as", "user",
+            "--format", "json",
+        ]
+        if data is not None:
+            args.extend(["--data", json.dumps(data, ensure_ascii=False)])
+        if params is not None:
+            args.extend(["--params", json.dumps(params, ensure_ascii=False)])
+        for field, file_path in (files or {}).items():
+            cli_file_path = file_path
+            if os.path.isabs(cli_file_path):
+                cli_file_path = os.path.relpath(cli_file_path, os.getcwd())
+            args.extend(["--file", f"{field}={cli_file_path}"])
+        proc = None
+        for attempt in range(5):
+            proc = subprocess.run(args, capture_output=True, text=True)
+            if proc.returncode == 0:
+                break
+            combined = proc.stderr.strip() or proc.stdout.strip()
+            retryable = ["transport", "EOF", "timeout", "i/o timeout"]
+            if not any(token in combined for token in retryable):
+                break
+            time.sleep(1.5 * (attempt + 1))
+        if proc.returncode != 0:
+            raise RuntimeError(proc.stderr.strip() or proc.stdout.strip())
+        out = json.loads(proc.stdout or "{}")
+        if out.get("ok") is True:
+            return {"code": 0, "data": out.get("data") or {}}
+        return out
+
+    def _api_get(self, path: str, params: dict = None) -> dict:
+        if self._use_lark_cli:
+            return self._cli_api("GET", path, params=params)
+        resp = self._client.get(f"{FEISHU_API_BASE}{path.removeprefix('/open-apis')}", headers=self._headers(), params=params)
+        return resp.json()
+
+    def _api_post(self, path: str, data: dict = None) -> dict:
+        if self._use_lark_cli:
+            return self._cli_api("POST", path, data=data or {})
+        resp = self._client.post(f"{FEISHU_API_BASE}{path.removeprefix('/open-apis')}", headers=self._headers(), json=data or {})
+        return resp.json()
+
+    def _api_delete(self, path: str, params: dict = None) -> dict:
+        if self._use_lark_cli:
+            return self._cli_api("DELETE", path, params=params)
+        resp = self._client.delete(f"{FEISHU_API_BASE}{path.removeprefix('/open-apis')}", headers=self._headers(), params=params)
+        return resp.json()
+
     def create_app(self, name: str, folder_token: str = "") -> dict:
         """Create a NEW Bitable app (multidimensional table file).
 
@@ -62,12 +120,10 @@ class FeishuBitable:
         On success sets ``self.app_token`` to the new app and returns the app
         info dict: ``{app_token, default_table_id, url, name, ...}``.
         """
-        url = f"{FEISHU_API_BASE}/bitable/v1/apps"
         body = {"name": name}
         if folder_token:
             body["folder_token"] = folder_token
-        resp = self._client.post(url, headers=self._headers(), json=body)
-        data = resp.json()
+        data = self._api_post("/open-apis/bitable/v1/apps", body)
         if data.get("code") != 0:
             raise RuntimeError(
                 f"Failed to create bitable app: code={data.get('code')} "
@@ -81,13 +137,8 @@ class FeishuBitable:
     def delete_app(self, app_token: str = "") -> bool:
         """Delete a Bitable app via the Drive files API."""
         at = app_token or self.app_token
-        url = f"{FEISHU_API_BASE}/drive/v1/files/{at}"
-        resp = self._client.delete(
-            url,
-            headers={"Authorization": f"Bearer {self._get_tenant_token()}"},
-            params={"type": "bitable"},
-        )
-        return resp.json().get("code") == 0
+        data = self._api_delete(f"/open-apis/drive/v1/files/{at}", {"type": "bitable"})
+        return data.get("code") == 0
 
     def create_full_bitable(self, name: str, folder_token: str = "") -> dict:
         """Create the canonical 4-table Douyin bitable and return all IDs.
@@ -113,10 +164,7 @@ class FeishuBitable:
         # Remove the empty default table Feishu auto-creates.
         if default_table_id:
             try:
-                self._client.delete(
-                    f"{FEISHU_API_BASE}/bitable/v1/apps/{app_token}/tables/{default_table_id}",
-                    headers=self._headers(),
-                )
+                self._api_delete(f"/open-apis/bitable/v1/apps/{app_token}/tables/{default_table_id}")
             except Exception:
                 pass
 
@@ -155,10 +203,7 @@ class FeishuBitable:
         # Remove the empty default table Feishu auto-creates.
         if default_table_id:
             try:
-                self._client.delete(
-                    f"{FEISHU_API_BASE}/bitable/v1/apps/{app_token}/tables/{default_table_id}",
-                    headers=self._headers(),
-                )
+                self._api_delete(f"/open-apis/bitable/v1/apps/{app_token}/tables/{default_table_id}")
             except Exception:
                 pass
 
@@ -174,9 +219,7 @@ class FeishuBitable:
 
     def list_tables(self) -> list:
         """List all tables in the Bitable app."""
-        url = f"{FEISHU_API_BASE}/bitable/v1/apps/{self.app_token}/tables"
-        resp = self._client.get(url, headers=self._headers())
-        data = resp.json()
+        data = self._api_get(f"/open-apis/bitable/v1/apps/{self.app_token}/tables")
         if data.get("code") != 0:
             print(f"[Feishu] List tables error: {data.get('msg')}")
             return []
@@ -184,13 +227,10 @@ class FeishuBitable:
 
     def create_table(self, name: str) -> str:
         """Create a new table and return its table_id."""
-        url = f"{FEISHU_API_BASE}/bitable/v1/apps/{self.app_token}/tables"
-        resp = self._client.post(
-            url,
-            headers=self._headers(),
-            json={"table": {"name": name}},
+        data = self._api_post(
+            f"/open-apis/bitable/v1/apps/{self.app_token}/tables",
+            {"table": {"name": name}},
         )
-        data = resp.json()
         if data.get("code") != 0:
             raise RuntimeError(f"Failed to create table: {data.get('msg')}")
         table_id = data["data"]["table_id"]
@@ -205,9 +245,10 @@ class FeishuBitable:
         """
         tid = table_id or self.table_id
         for f in fields:
-            url = f"{FEISHU_API_BASE}/bitable/v1/apps/{self.app_token}/tables/{tid}/fields"
-            resp = self._client.post(url, headers=self._headers(), json=f)
-            data = resp.json()
+            data = self._api_post(
+                f"/open-apis/bitable/v1/apps/{self.app_token}/tables/{tid}/fields",
+                f,
+            )
             if data.get("code") != 0:
                 print(f"[Feishu] Add field '{f.get('field_name')}' error: {data.get('msg')}")
 
@@ -224,15 +265,11 @@ class FeishuBitable:
 
         for i in range(0, len(records), 500):
             batch = records[i : i + 500]
-            url = (
-                f"{FEISHU_API_BASE}/bitable/v1/apps/{self.app_token}"
-                f"/tables/{tid}/records/batch_create"
-            )
             payload = {"records": [{"fields": r} for r in batch]}
-            resp = self._client.post(
-                url, headers=self._headers(), json=payload
+            data = self._api_post(
+                f"/open-apis/bitable/v1/apps/{self.app_token}/tables/{tid}/records/batch_create",
+                payload,
             )
-            data = resp.json()
             if data.get("code") != 0:
                 print(
                     f"[Feishu] Batch write error (batch {i // 500 + 1}): "
@@ -375,15 +412,18 @@ class FeishuBitable:
         tid = table_id or self.table_id
         total_deleted = 0
         while True:
-            url = f"{FEISHU_API_BASE}/bitable/v1/apps/{self.app_token}/tables/{tid}/records"
-            resp = self._client.get(url, headers=self._headers(), params={"page_size": 500})
-            data = resp.json()
+            data = self._api_get(
+                f"/open-apis/bitable/v1/apps/{self.app_token}/tables/{tid}/records",
+                {"page_size": 500},
+            )
             items = data.get("data", {}).get("items", [])
             if not items:
                 break
             record_ids = [item["record_id"] for item in items]
-            del_url = f"{FEISHU_API_BASE}/bitable/v1/apps/{self.app_token}/tables/{tid}/records/batch_delete"
-            self._client.post(del_url, headers=self._headers(), json={"records": record_ids})
+            self._api_post(
+                f"/open-apis/bitable/v1/apps/{self.app_token}/tables/{tid}/records/batch_delete",
+                {"records": record_ids},
+            )
             total_deleted += len(record_ids)
         print(f"[Feishu] Deleted {total_deleted} records from table {tid}")
         return total_deleted
@@ -392,12 +432,86 @@ class FeishuBitable:
         """Upload a file to Feishu. Returns file_token. Uses chunked upload for files > 20MB."""
         file_size = os.path.getsize(file_path)
         file_name = os.path.basename(file_path)
+        if self._use_lark_cli:
+            if file_size <= 20 * 1024 * 1024:
+                return self._upload_small_cli(file_path, file_name, file_size, parent_type)
+            return self._upload_chunked_cli(file_path, file_name, file_size, parent_type)
         token = self._get_tenant_token()
 
         if file_size <= 20 * 1024 * 1024:
             return self._upload_small(file_path, file_name, file_size, parent_type, token)
         else:
             return self._upload_chunked(file_path, file_name, file_size, parent_type, token)
+
+    def _upload_small_cli(self, file_path, file_name, file_size, parent_type):
+        data = self._cli_api(
+            "POST",
+            "/open-apis/drive/v1/medias/upload_all",
+            data={
+                "file_name": file_name,
+                "parent_type": parent_type,
+                "parent_node": self.app_token,
+                "size": str(file_size),
+            },
+            files={"file": file_path},
+        )
+        if data.get("code") != 0:
+            print(f"[Feishu] Upload error: {data.get('msg')}")
+            return ""
+        return data.get("data", {}).get("file_token", "")
+
+    def _upload_chunked_cli(self, file_path, file_name, file_size, parent_type):
+        data = self._cli_api(
+            "POST",
+            "/open-apis/drive/v1/medias/upload_prepare",
+            data={
+                "file_name": file_name,
+                "parent_type": parent_type,
+                "parent_node": self.app_token,
+                "size": file_size,
+            },
+        )
+        if data.get("code") != 0:
+            print(f"[Feishu] Upload prepare error: {data.get('msg')}")
+            return ""
+
+        upload_id = data["data"]["upload_id"]
+        block_size = data["data"]["block_size"]
+        block_num = data["data"]["block_num"]
+
+        with open(file_path, "rb") as f, tempfile.TemporaryDirectory() as td:
+            for i in range(block_num):
+                chunk = f.read(block_size)
+                if not chunk:
+                    break
+                checksum = str(zlib.adler32(chunk) & 0xFFFFFFFF)
+                chunk_path = os.path.join(td, f"part_{i}")
+                with open(chunk_path, "wb") as cf:
+                    cf.write(chunk)
+                part = self._cli_api(
+                    "POST",
+                    "/open-apis/drive/v1/medias/upload_part",
+                    data={
+                        "upload_id": upload_id,
+                        "seq": str(i),
+                        "size": str(len(chunk)),
+                        "checksum": checksum,
+                    },
+                    files={"file": chunk_path},
+                )
+                if part.get("code") != 0:
+                    print(f"[Feishu] Upload part {i} error: {part.get('msg')}")
+                    return ""
+
+        data = self._cli_api(
+            "POST",
+            "/open-apis/drive/v1/medias/upload_finish",
+            data={"upload_id": upload_id, "block_num": block_num},
+        )
+        if data.get("code") != 0:
+            print(f"[Feishu] Upload finish error: {data.get('msg')}")
+            return ""
+        return data.get("data", {}).get("file_token", "")
 
     def _upload_small(self, file_path, file_name, file_size, parent_type, token):
         headers = {"Authorization": f"Bearer {token}"}

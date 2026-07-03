@@ -145,8 +145,11 @@ async def _login(timeout=480):
 @click.option("--structure-only", is_flag=True, help="只新建 5 张表结构，不抓数据")
 @click.option("--cdp", "cdp_endpoint", default="",
               help="连接已登录 Chrome 的 CDP 端点（如 http://localhost:9222），免 Cookie")
+@click.option("--chrome-profile", is_flag=True,
+              help="用有头 Google Chrome 启动本机默认用户资料，复用当前 Chrome 登录态（无需 CDP 端口）")
 def scrape_author(url, folder, name, recent_count, skip_top,
-                  no_comments, headless, ui_comments, structure_only, cdp_endpoint):
+                  no_comments, headless, ui_comments, structure_only, cdp_endpoint,
+                  chrome_profile):
     """从作者主页链接抓取：作者信息(粉丝量) + 选定作品(封面/视频/图片/点赞评论收藏) + 评论，写入 5 表多维表格。
 
     默认跳过置顶视频后取最近 5 条（检测到 is_top 则丢弃置顶，否则回退为跳过前 --skip-top 条，
@@ -156,20 +159,22 @@ def scrape_author(url, folder, name, recent_count, skip_top,
     直接复用浏览器登录态，无需导出 Cookie。
     """
     cdp = cdp_endpoint or CDP_ENDPOINT
-    if not DOUYIN_COOKIE and not cdp and not structure_only:
+    if not DOUYIN_COOKIE and not cdp and not chrome_profile and not structure_only:
         click.echo("⚠️ 未检测到 DOUYIN_COOKIE 或 CDP 端点。")
         click.echo("方式一: 在 .env 配置 DOUYIN_COOKIE 或运行 `python main.py login`")
         click.echo("方式二: 启动 Chrome 时带 --remote-debugging-port=9222，登录抖音后用 --cdp http://localhost:9222")
+        click.echo("方式三: 使用 --chrome-profile 启动有头 Chrome 默认资料，复用本机登录态")
         click.echo("如果只需创建表结构，请加 --structure-only。")
         return
     asyncio.run(_scrape_author(
         url, _folder_token(folder), name, recent_count, skip_top,
-        no_comments, headless, ui_comments, structure_only, cdp,
+        no_comments, headless, ui_comments, structure_only, cdp, chrome_profile,
     ))
 
 
 async def _scrape_author(url, folder_token, name, recent_count, skip_top,
-                         no_comments, headless, ui_comments, structure_only, cdp_endpoint=""):
+                         no_comments, headless, ui_comments, structure_only,
+                         cdp_endpoint="", chrome_profile=False):
     # 1. Create the 5-table bitable (作者信息 + 视频作品 + 图文作品 + 一级评论 + 二级评论).
     feishu = FeishuBitable()
     try:
@@ -199,8 +204,11 @@ async def _scrape_author(url, folder_token, name, recent_count, skip_top,
         pipeline.AUTHOR_TOP_SKIP = skip_top
         pipeline.KEYWORD = url          # 来源 tag on every record
         pipeline.SKIP_COMMENTS = no_comments
+        pipeline.APPEND = True          # New tables are empty; avoid extra read/delete scopes.
         if cdp_endpoint:
             pipeline.USE_CDP = cdp_endpoint
+        if chrome_profile:
+            pipeline.USE_CHROME_PROFILE = True
         if headless:
             pipeline.HEADLESS = True
         if ui_comments:

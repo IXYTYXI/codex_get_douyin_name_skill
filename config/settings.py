@@ -1,12 +1,37 @@
 import os
+import json
 from pathlib import Path
 from dotenv import load_dotenv
 
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 
-FEISHU_APP_ID = os.getenv("FEISHU_APP_ID", "")
-FEISHU_APP_SECRET = os.getenv("FEISHU_APP_SECRET", "")
+def _resolve_feishu_app_credentials() -> tuple[str, str]:
+    app_id = os.getenv("FEISHU_APP_ID", "")
+    app_secret = os.getenv("FEISHU_APP_SECRET", "")
+    if app_id and app_secret:
+        return app_id, app_secret
+
+    config_path = Path.home() / ".lark-cli" / "config.json"
+    try:
+        data = json.loads(config_path.read_text(encoding="utf-8"))
+    except Exception:
+        return app_id, app_secret
+
+    apps = data.get("apps") or []
+    if isinstance(apps, dict):
+        apps = list(apps.values())
+    for app in apps:
+        if not isinstance(app, dict):
+            continue
+        cli_app_id = app.get("appId") or app.get("app_id") or ""
+        cli_app_secret = app.get("appSecret") or app.get("app_secret") or ""
+        if cli_app_id and cli_app_secret:
+            return app_id or cli_app_id, app_secret or cli_app_secret
+    return app_id, app_secret
+
+
+FEISHU_APP_ID, FEISHU_APP_SECRET = _resolve_feishu_app_credentials()
 FEISHU_APP_TOKEN = os.getenv("FEISHU_APP_TOKEN", "")
 FEISHU_TABLE_ID = os.getenv("FEISHU_TABLE_ID", "")
 

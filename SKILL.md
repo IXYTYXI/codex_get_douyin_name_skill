@@ -7,6 +7,8 @@ description: Use when collecting Douyin author homepage data into Feishu/Lark Ba
 
 Collect Douyin author homepage data with an explicit target-selection contract, then write auditable results to Feishu/Lark Base. The core rule: never infer the user's slice rule. Record the exact collection, ordering, and slice before collecting.
 
+For user-facing installation, configuration, usage, troubleshooting, packaging, and handoff guidance, read `references/collector-miji.md`. Do this when the user asks for a "秘籍", install guide, zip package instructions, or how another Codex user should run the skill.
+
 ## Required Inputs
 
 Confirm or discover these before writing data:
